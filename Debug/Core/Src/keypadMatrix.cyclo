@@ -1,0 +1,2 @@
+../Core/Src/keypadMatrix.c:29:6:scanMatrix	8
+../Core/Src/keypadMatrix.c:58:6:handleKey	8
