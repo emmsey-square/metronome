@@ -74,7 +74,7 @@ char msg[50];
 #endif
 
 //	BPM variable for storing current bpm with intial value of BPM_MIN declared in main.h
-volatile uint32_t bpm = BPM_MIN;
+volatile uint32_t bpm = 200;//BPM_MIN;
 
 //	Flag variable for pending beat
 static volatile bool beat_pending = false;
@@ -134,34 +134,36 @@ typedef enum
 }
 OUTPUT_MODE;
 
-OUTPUT_MODE output_mode = BUZZER;	//	Default output buzzer
+const char modes[3][6] = {"Buzz", "LEDs", "Servo"};
+
+OUTPUT_MODE output_mode = SERVO;	//	Default output buzzer
 
 //	Lookup table for servo CCR value, mapped 190 beat values to 180 degrees of motion
-const uint8_t ccr_table[BPM_MAX-BPM_MIN] = {
-  125, 124, 124, 123, 123, 122, 122, 121, 121, 120, 119, 119, 118, 118, 117, 117, 116, 116, 115, 115,
-  114, 113, 113, 112, 112, 111, 111, 110, 110, 109, 108, 108, 107, 107, 106, 106, 105, 105, 104, 104,
-  103, 102, 102, 101, 101, 100, 100,  99,  99,  98,  97,  97,  96,  96,  95,  95,  94,  94,  93,  92,
-   92,  91,  91,  90,  90,  89,  89,  88,  88,  87,  86,  86,  85,  85,  84,  84,  83,  83,  82,  81,
-   81,  80,  80,  79,  79,  78,  78,  77,  76,  76,  75,  75,  74,  74,  73,  73,  72,  72,  71,  70,
-   70,  69,  69,  68,  68,  67,  67,  66,  65,  65,  64,  64,  63,  63,  62,  62,  61,  61,  60,  59,
-   59,  58,  58,  57,  57,  56,  56,  55,  54,  54,  53,  53,  52,  52,  51,  51,  50,  49,  49,  48,
-   48,  47,  47,  46,  46,  45,  45,  44,  43,  43,  42,  42,  41,  41,  40,  40,  39,  38,  38,  37,
-   37,  36,  36,  35,  35,  34,  34,  33,  32,  32,  31,  31,  30,  30,  29,  29,  28,  27,  27,  26,
-   26,  25,  25,  24,  24,  23,  22,  22,  21,  21
+const uint32_t ccr_table[BPM_MAX-BPM_MIN+1] = {
+  125, 125, 124, 124, 123, 123, 123, 122, 122, 121, 121, 121, 120, 120, 119, 119, 119, 118, 118, 117,
+  117, 117, 116, 116, 115, 115, 115, 114, 114, 113, 113, 113, 112, 112, 112, 111, 111, 110, 110, 110,
+  109, 109, 108, 108, 108, 107, 107, 106, 106, 106, 105, 105, 104, 104, 104, 103, 103, 102, 102, 102,
+  101, 101, 100, 100, 100,  99,  99,  98,  98,  98,  97,  97,  96,  96,  96,  95,  95,  94,  94,  94,
+   93,  93,  92,  92,  92,  91,  91,  90,  90,  90,  89,  89,  88,  88,  88,  87,  87,  87,  86,  86,
+   85,  85,  85,  84,  84,  83,  83,  83,  82,  82,  81,  81,  81,  80,  80,  79,  79,  79,  78,  78,
+   77,  77,  77,  76,  76,  75,  75,  75,  74,  74,  73,  73,  73,  72,  72,  71,  71,  71,  70,  70,
+   69,  69,  69,  68,  68,  67,  67,  67,  66,  66,  65,  65,  65,  64,  64,  63,  63,  63,  62,  62,
+   62,  61,  61,  60,  60,  60,  59,  59,  58,  58,  58,  57,  57,  56,  56,  56,  55,  55,  54,  54,
+   54,  53,  53,  52,  52,  52,  51,  51,  50,  50, 50
 };
 
 //	Lookup table for servo delay value, with decreasing delay based on current BPM
-const uint16_t delay_table[BPM_MAX-BPM_MIN] = {
-  1000,  996,  991,  987,  982,  978,  973,  969,  965,  960,  956,  951,  947,  943,  938,  934,  929,  925,  920,  916,
-   912,  907,  903,  898,  894,  890,  885,  881,  876,  872,  867,  863,  859,  854,  850,  845,  841,  837,  832,  828,
-   823,  819,  814,  810,  806,  801,  797,  792,  788,  784,  779,  775,  770,  766,  761,  757,  753,  748,  744,  739,
-   735,  731,  726,  722,  717,  713,  708,  704,  700,  695,  691,  686,  682,  677,  673,  669,  664,  660,  655,  651,
-   647,  642,  638,  633,  629,  624,  620,  616,  611,  607,  602,  598,  594,  589,  585,  580,  576,  571,  567,  563,
-   558,  554,  549,  545,  541,  536,  532,  527,  523,  518,  514,  510,  505,  501,  496,  492,  488,  483,  479,  474,
-   470,  465,  461,  457,  452,  448,  443,  439,  434,  430,  426,  421,  417,  412,  408,  404,  399,  395,  390,  386,
-   381,  377,  373,  368,  364,  359,  355,  351,  346,  342,  337,  333,  328,  324,  320,  315,  311,  306,  302,  298,
-   293,  289,  284,  280,  275,  271,  267,  262,  258,  253,  249,  245,  240,  236,  231,  227,  222,  218,  214,  209,
-   205,  200,  196,  192,  187,  183,  178,  174,  169,  165
+const uint32_t delay_table[BPM_MAX-BPM_MIN+1] = {
+  2000, 1992, 1982, 1974, 1964, 1956, 1946, 1938, 1928, 1920, 1910, 1902, 1892, 1884, 1874, 1866, 1856, 1848, 1838, 1830,
+  1820, 1812, 1802, 1794, 1784, 1776, 1766, 1758, 1748, 1740, 1730, 1722, 1712, 1704, 1694, 1686, 1676, 1668, 1658, 1650,
+  1640, 1632, 1622, 1614, 1604, 1596, 1586, 1578, 1568, 1560, 1550, 1542, 1532, 1524, 1514, 1506, 1496, 1488, 1478, 1470,
+  1460, 1452, 1442, 1434, 1424, 1416, 1406, 1398, 1388, 1380, 1370, 1362, 1352, 1344, 1334, 1326, 1316, 1308, 1298, 1290,
+  1280, 1272, 1262, 1254, 1244, 1236, 1226, 1218, 1208, 1200, 1190, 1182, 1172, 1164, 1154, 1146, 1136, 1128, 1118, 1110,
+  1100, 1092, 1082, 1074, 1064, 1056, 1046, 1038, 1028, 1020, 1010, 1002,  992,  984,  974,  966,  956,  948,  938,  930,
+   920,  912,  902,  894,  884,  876,  866,  858,  848,  840,  830,  822,  812,  804,  794,  786,  776,  768,  758,  750,
+   740,  732,  722,  714,  704,  696,  686,  678,  668,  660,  650,  642,  632,  624,  614,  606,  596,  588,  578,  570,
+   560,  552,  542,  534,  524,  516,  506,  498,  488,  480,  470,  462,  452,  444,  434,  426,  416,  408,  398,  390,
+   380,  372,  362,  354,  344,  336,  326,  318,  308,  300,  300
 };
 
 
@@ -175,19 +177,23 @@ static void MX_TIM5_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART2_UART_Init(void);
+
 /* USER CODE BEGIN PFP */
 
 static inline void MetronomeUpdatePeriod(void);
 static inline void BuzzerStartPulse(void);
 static inline void BuzzerStopPulse(void);
-
+static inline void disableBuzzer(void);
+static inline void enableBuzzer(void);
+static inline char* BPMtoCharArray(char* buff);
+static inline void updateLCD(void);
+static inline void clearLEDS(void);
+static inline void updateLEDS(void);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-
 
 /**
  * @brief  Recomputes and applies the TIM5 auto-reload value for the current BPM.
@@ -205,8 +211,6 @@ static inline void MetronomeUpdatePeriod(void)
 	__HAL_TIM_SET_COUNTER(&htim5, 0);
 	__HAL_TIM_SET_AUTORELOAD(&htim5, period_ticks-1);
 }
-
-
 
 /**
  * @brief  Starts a buzzer pulse (and lights the indicator LED).
@@ -227,8 +231,6 @@ static inline void BuzzerStartPulse(void)
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
 }
 
-
-
 /**
  * @brief  Stops the buzzer pulse and turns off the indicator LED.
  * @details Stops TIM2 CH1 PWM output, clears the LED on LED_ONBOARD_Pin
@@ -242,8 +244,6 @@ static inline void BuzzerStopPulse(void)
 	pulse_active = false;
 }
 
-
-
 /**
  * @brief  Disables the buzzer by de-initialising TIM2 PWM.
  * @details Calls HAL_TIM_PWM_DeInit() on htim2.
@@ -251,10 +251,10 @@ static inline void BuzzerStopPulse(void)
  */
 static inline void disableBuzzer(void)
 {
+	HAL_TIM_PWM_Stop(&htim2, TIM_CHANNEL_1);
 	HAL_TIM_PWM_DeInit(&htim2);
+
 }
-
-
 
 /**
  * @brief  Re-enables the buzzer by re-initialising TIM2 PWM.
@@ -268,7 +268,19 @@ static inline void enableBuzzer(void)
 	MetronomeUpdatePeriod();
 }
 
+static inline char* BPMtoCharArray(char* buff)
+{
+	buff[0] = '0' + ((bpm / 100) % 100);	//	Get 100s
+	buff[1] = '0' + ((bpm / 10) % 10);		//	Get 10s
+	buff[2] = '0' + (bpm % 10);				//	Get 1s
 
+	if (buff[0] == '0' && buff[1] > '0')	// Check for 0 in hundreds place, replace with empty string
+		buff[0] = ' ';
+
+	buff[3] = '\0';							//	Null terminate string
+
+	return buff;
+}
 
 /**
  * @brief  Redraws the 16x2 I2C LCD with the current BPM and tempo marking.
@@ -286,7 +298,7 @@ static inline void enableBuzzer(void)
  *          | 121-170   | Allegro    |
  *          | 171-200   | Presto     |
  *          | > 200     | Prestisimo |
- * @note   Uses the shared ::buff character buffer for the BPM text.
+ * @note   Uses the shared buff character buffer for the BPM text.
  * @return None
  */
 static inline void updateLCD(void)
@@ -294,11 +306,16 @@ static inline void updateLCD(void)
 	lcd_clear();
 
 	lcd_put_cur(0, 0);
-	lcd_send_string("BPM: ");
+	lcd_send_string(BPMtoCharArray(buff));
 
-	snprintf(buff, 4, "%ld", bpm);
-	lcd_put_cur(0, 5);
-	lcd_send_string(buff);
+	lcd_put_cur(0, 3);
+	lcd_send_string("BPM");
+
+	lcd_put_cur(0, 7);
+	lcd_send_string("Out:");
+
+	lcd_put_cur(0, 11);
+	lcd_send_string(modes[output_mode]);
 
 	lcd_put_cur(1, 0);
 	lcd_send_string("Tempo:");
@@ -315,6 +332,16 @@ static inline void updateLCD(void)
 }
 
 /**
+ * @brief Turns off all four LEDs by setting their GPIO pins low.
+ * @return None
+ */
+static inline void clearLEDS(void)
+{
+	for (uint8_t i = 0; i < 4; i++)
+		HAL_GPIO_WritePin(ledPorts[i], ledPins[i], GPIO_PIN_RESET);	//	Clear all leds
+}
+
+/**
  * @brief  Updates the four beat-indicator LEDs from num_beats.
  * @details Clears all LEDs listed in ledPorts / ledPins, then sets the
  *          first num_beats of them, giving a "filling bar" effect across
@@ -323,8 +350,7 @@ static inline void updateLCD(void)
  */
 static inline void updateLEDS(void)
 {
-	for (uint8_t i = 0; i < 4; i++)
-		HAL_GPIO_WritePin(ledPorts[i], ledPins[i], GPIO_PIN_RESET);	//	Clear all leds
+	clearLEDS();
 
 	for (uint8_t i = 0; i < num_beats; i++)
 		HAL_GPIO_WritePin(ledPorts[i], ledPins[i], GPIO_PIN_SET);	//	Set leds according to num_beats value
@@ -414,31 +440,53 @@ int main(void)
 	  {
 		  beat_pending = false;				//	Reset beat_pending flag
 
+		  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);	//	Toggle indicator LED
+
 		  if (output_mode == BUZZER)		//	When output mode set to 'BUZZER', enable buzzer pulse on pending beat
 		  {
+			  clearLEDS();
+			  enableBuzzer();
 			  BuzzerStartPulse();
 		  }
 		  else if (output_mode == SERVO)	//	When output mode set to 'SERVO', enable servo swing on pending beat
 		  {
+			  clearLEDS();
+			  disableBuzzer();
+
 			  if (now - servo_start_tick >= delay_table[bpm-BPM_MIN])
 			  {
 				  servo_start_tick += delay_table[bpm-BPM_MIN];							// Lookup appropriate delay from delay table
 
 				  if (servo_at_zero_pos)
 				  {
-					  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 25);						// 0 degrees
+					  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 25);						// 0 degrees
 				  }
 				  else
 				  {
-					  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, ccr_table[bpm-BPM_MIN]);	// BPM-mapped degrees
+					  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, ccr_table[bpm-BPM_MIN]);	// BPM-mapped degrees
 				  }
 				  servo_at_zero_pos = !servo_at_zero_pos;
 			  }
+//			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 25);
+//			  HAL_Delay(delay_table[bpm-BPM_MIN]);
+//			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, ccr_table[bpm-BPM_MIN]);
+//			  HAL_Delay(delay_table[bpm-BPM_MIN]);
 
 		  }
+		  else if (output_mode == LEDS)		//	Update LEDs with current quarter beat if output is set to 'LEDS' from output_mode enum
+		  {
+			  disableBuzzer();
+			  if (num_beats < 4)	// Check number of beats, increment if < 4 otherwise reset to 0
+			  {
+				  num_beats++;
+			  }
+			  else
+			  {
+				  num_beats = 1;
+			  }
 
-		  (num_beats < 3) ? num_beats++ : (num_beats = 0);	// Check number of beats, increment if < 4 otherwise reset to 0
-
+			  updateLEDS();
+		  }
 	  }
 
 	  if (now - last_time > UPDATE_TIME)	//	Refresh loop using systick instead of delay
@@ -446,13 +494,6 @@ int main(void)
 		  last_time = now;
 
 		  updateLCD();								//	Update LCD with current BPM and tempo
-
-		  if (output_mode == LEDS)
-		  {
-			  updateLEDS();							//	Update LEDs with current quarter beat if output is set to 'LEDS' from output_mode enum
-		  }
-
-
 	  }
 
 	  if (keyPressed)						//	Handling pressed matrix keys in main
