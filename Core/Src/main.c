@@ -43,12 +43,12 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
+//	LCD backlight macros
 #define ON 1
 #define OFF 0
 
-#define BPM_DELAY(x)	( ( (60000UL) / (x) * (2) ) )
-
-#define DEBUG 1
+//	Debug macro for UART debug printing
+//#define DEBUG 1
 
 /* USER CODE END PM */
 
@@ -63,36 +63,69 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
+//	Char buffer for BPM string
 char buff[4];
+
+//Char buffer for UART debug print
+#ifdef DEBUG
+
 char msg[50];
 
+#endif
+
+//	BPM variable for storing current bpm with intial value of BPM_MIN declared in main.h
 volatile uint32_t bpm = BPM_MIN;
+
+//	Flag variable for pending beat
 static volatile bool beat_pending = false;
+
+//	Flag variable for buzzer pulse
 static volatile bool pulse_active = false;
+
+//	Variable for storing systick val at start of buzzer pulse
 static volatile uint32_t pulse_start_tick = 0;
 
+//	Variable for storing systick val at start of button press
 static volatile uint32_t last_btn_tick = 0;
+
+//	Variable for storing systick val at start of keypad press
 static volatile uint32_t last_keypad_tick = 0;
+
+//	Variable for storing systick val at start of servo swing
+static volatile uint32_t servo_start_tick = 0;
+
+//	Flag variable for indicating changed BPM
 static volatile bool bpm_changed = true;
 
+//	Variable for storing systick val at start of refresh loop
 static uint32_t last_time = 0;
 
+//	Flag variable for servo pos
+static bool servo_at_zero_pos = false;
+
+//	Matrix column pins and their respective ports
 uint16_t colsPins[NUMCOLS] = {COL1_Pin, COL2_Pin, COL3_Pin};
 GPIO_TypeDef* colsPorts[NUMCOLS] = {GPIOB, GPIOB, GPIOB};
 
+//	Matrix row pins and their respective ports
 uint16_t rowPins[NUMROWS] = {ROW1_Pin, ROW2_Pin, ROW3_Pin, ROW4_Pin};
 GPIO_TypeDef* rowPorts[NUMROWS] = {GPIOA, GPIOA, GPIOA, GPIOA};
 
-uint16_t ledPins[4] = {LED1_Pin, LED3_Pin, LED3_Pin, LED4_Pin};
+//	Test board LED pins and their respective ports
+uint16_t ledPins[4] = {LED1_Pin, LED2_Pin, LED3_Pin, LED4_Pin};
 GPIO_TypeDef* ledPorts[4] = {GPIOA, GPIOA, GPIOC, GPIOC};
 
+//	Flag variables for keypad entry
 uint32_t entry = 0;
 uint32_t digits = 0;
 
+//	Flag variable for number of beats
 uint8_t num_beats = 0;
 
+//	Flag variable for keypad button press
 static volatile bool keyPressed = false;
 
+//	Enum for storing outputs
 typedef enum
 {
 	BUZZER,
@@ -101,8 +134,9 @@ typedef enum
 }
 OUTPUT_MODE;
 
-OUTPUT_MODE output_mode = BUZZER;
+OUTPUT_MODE output_mode = BUZZER;	//	Default output buzzer
 
+//	Lookup table for servo CCR value, mapped 190 beat values to 180 degrees of motion
 const uint8_t ccr_table[BPM_MAX-BPM_MIN] = {
   125, 124, 124, 123, 123, 122, 122, 121, 121, 120, 119, 119, 118, 118, 117, 117, 116, 116, 115, 115,
   114, 113, 113, 112, 112, 111, 111, 110, 110, 109, 108, 108, 107, 107, 106, 106, 105, 105, 104, 104,
@@ -116,6 +150,7 @@ const uint8_t ccr_table[BPM_MAX-BPM_MIN] = {
    26,  25,  25,  24,  24,  23,  22,  22,  21,  21
 };
 
+//	Lookup table for servo delay value, with decreasing delay based on current BPM
 const uint16_t delay_table[BPM_MAX-BPM_MIN] = {
   1000,  996,  991,  987,  982,  978,  973,  969,  965,  960,  956,  951,  947,  943,  938,  934,  929,  925,  920,  916,
    912,  907,  903,  898,  894,  890,  885,  881,  876,  872,  867,  863,  859,  854,  850,  845,  841,  837,  832,  828,
@@ -152,6 +187,18 @@ static inline void BuzzerStopPulse(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+
+
+/**
+ * @brief  Recomputes and applies the TIM5 auto-reload value for the current BPM.
+ * @details Converts the global bpm into timer ticks using
+ *          `(60000 * TICKS_PER_MS) / bpm`, resets the TIM5 counter to 0 and
+ *          loads `period_ticks - 1` into the auto-reload register. Resetting
+ *          the counter restarts the beat interval so a new tempo takes effect
+ *          immediately.
+ * @note   Reads the global bpm; call it after any BPM change.
+ * @return None
+ */
 static inline void MetronomeUpdatePeriod(void)
 {
 	uint32_t period_ticks = (60000UL * TICKS_PER_MS) / bpm;
@@ -159,6 +206,18 @@ static inline void MetronomeUpdatePeriod(void)
 	__HAL_TIM_SET_AUTORELOAD(&htim5, period_ticks-1);
 }
 
+
+
+/**
+ * @brief  Starts a buzzer pulse (and lights the indicator LED).
+ * @details Records the pulse start time from the SysTick (pulse_start_tick),
+ *          sets pulse_active, loads a compare value of 500 into TIM2 CH1
+ *          (50 % duty with a period of 999) and starts PWM output. The pulse
+ *          is ended by BuzzerStopPulse() from the main loop once
+ *          PULSE_DUR_MS has elapsed.
+ * @note   Drives PA5 high directly using GPIO_PIN_5.
+ * @return None
+ */
 static inline void BuzzerStartPulse(void)
 {
 	pulse_start_tick = HAL_GetTick();
@@ -168,24 +227,68 @@ static inline void BuzzerStartPulse(void)
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
 }
 
+
+
+/**
+ * @brief  Stops the buzzer pulse and turns off the indicator LED.
+ * @details Stops TIM2 CH1 PWM output, clears the LED on LED_ONBOARD_Pin
+ *          and resets pulse_active.
+ * @return None
+ */
 static inline void BuzzerStopPulse(void)
 {
 	HAL_TIM_PWM_Stop(&htim2, TIM_CHANNEL_1);
-	HAL_GPIO_WritePin(GPIOA, LED_ONBOARD_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 	pulse_active = false;
 }
 
+
+
+/**
+ * @brief  Disables the buzzer by de-initialising TIM2 PWM.
+ * @details Calls HAL_TIM_PWM_DeInit() on htim2.
+ * @return None
+ */
 static inline void disableBuzzer(void)
 {
 	HAL_TIM_PWM_DeInit(&htim2);
 }
 
+
+
+/**
+ * @brief  Re-enables the buzzer by re-initialising TIM2 PWM.
+ * @details Calls HAL_TIM_PWM_Init() on ::htim2 and then
+ *          MetronomeUpdatePeriod() to resynchronise the beat timer.
+ * @return None
+ */
 static inline void enableBuzzer(void)
 {
 	HAL_TIM_PWM_Init(&htim2);
 	MetronomeUpdatePeriod();
 }
 
+
+
+/**
+ * @brief  Redraws the 16x2 I2C LCD with the current BPM and tempo marking.
+ * @details Clears the display, then writes:
+ *          - Row 0: `BPM: <bpm>`
+ *          - Row 1: `Tempo:<name>`
+ *
+ *          The tempo name is chosen from ::bpm:
+ *          | BPM range | Marking    |
+ *          |-----------|------------|
+ *          | <= 60     | Grave      |
+ *          | 61-75     | Adagio     |
+ *          | 76-110    | Andante    |
+ *          | 111-120   | Moderato   |
+ *          | 121-170   | Allegro    |
+ *          | 171-200   | Presto     |
+ *          | > 200     | Prestisimo |
+ * @note   Uses the shared ::buff character buffer for the BPM text.
+ * @return None
+ */
 static inline void updateLCD(void)
 {
 	lcd_clear();
@@ -193,7 +296,7 @@ static inline void updateLCD(void)
 	lcd_put_cur(0, 0);
 	lcd_send_string("BPM: ");
 
-	snprintf(buff, 4, "%d", bpm);
+	snprintf(buff, 4, "%ld", bpm);
 	lcd_put_cur(0, 5);
 	lcd_send_string(buff);
 
@@ -211,6 +314,13 @@ static inline void updateLCD(void)
 
 }
 
+/**
+ * @brief  Updates the four beat-indicator LEDs from num_beats.
+ * @details Clears all LEDs listed in ledPorts / ledPins, then sets the
+ *          first num_beats of them, giving a "filling bar" effect across
+ *          the beats of a bar.
+ * @return None
+ */
 static inline void updateLEDS(void)
 {
 	for (uint8_t i = 0; i < 4; i++)
@@ -258,21 +368,23 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  lcd_init(&hi2c1);
+  lcd_init(&hi2c1);		//	Enable I2C for LCD and turn on backlight
   lcd_backlight(ON);
 
-  lcd_put_cur(0, 5);
+  lcd_put_cur(0, 5);			//	Display loading screen
   lcd_send_string("STM32");
   lcd_put_cur(1, 3);
   lcd_send_string("Metronome");
 
   HAL_Delay(1000);
 
-  MetronomeUpdatePeriod();
-  HAL_TIM_Base_Start_IT(&htim5);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+  MetronomeUpdatePeriod();		//	Initially set metronome period based on default BPM of 30
 
-  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 25);	// Set to 0 deg initially
+  HAL_TIM_Base_Start_IT(&htim5);	//	Start TIM5 for metronome timekeeping
+
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);	//	Enable TIM3 PWM output for servo
+
+  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 25);	// Set servo to 0 deg initially
   HAL_Delay(1000);
 
   /* USER CODE END 2 */
@@ -281,71 +393,80 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  uint32_t now = HAL_GetTick();
 
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-	  if (bpm_changed)
+	  if (bpm_changed)				//	Handling change in bpm in main
 	  {
-		  bpm_changed = false;
-		  MetronomeUpdatePeriod();
+		  bpm_changed = false;		//	Reset bpm_changed flag
+		  MetronomeUpdatePeriod();	//	Update metronome period based on current BPM
 	  }
 
-	  if (output_mode == BUZZER && pulse_active && (HAL_GetTick() - pulse_start_tick >= PULSE_DUR_MS))
+	  if (output_mode == BUZZER && pulse_active && (now - pulse_start_tick >= PULSE_DUR_MS))		//	Using systick to disable buzzer pulse after specified time when output mode set to buzzer
 	  {
 		  BuzzerStopPulse();
 	  }
 
-	  if (beat_pending)
+	  if (beat_pending)						//	Handling pending beat in main
 	  {
-		  beat_pending = false;
+		  beat_pending = false;				//	Reset beat_pending flag
 
-		  if (output_mode == BUZZER)
+		  if (output_mode == BUZZER)		//	When output mode set to 'BUZZER', enable buzzer pulse on pending beat
 		  {
 			  BuzzerStartPulse();
 		  }
-		  else if (output_mode == SERVO)
+		  else if (output_mode == SERVO)	//	When output mode set to 'SERVO', enable servo swing on pending beat
 		  {
+			  if (now - servo_start_tick >= delay_table[bpm-BPM_MIN])
+			  {
+				  servo_start_tick += delay_table[bpm-BPM_MIN];							// Lookup appropriate delay from delay table
+
+				  if (servo_at_zero_pos)
+				  {
+					  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 25);						// 0 degrees
+				  }
+				  else
+				  {
+					  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, ccr_table[bpm-BPM_MIN]);	// BPM-mapped degrees
+				  }
+				  servo_at_zero_pos = !servo_at_zero_pos;
+			  }
 
 		  }
 
-		  (num_beats < 4) ? num_beats++ : (num_beats = 0);	// Check number of beats, increment if < 4 otherwise reset to 0
-
-
-		  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 25);		// 0 degrees
-		  HAL_Delay(delay_table[bpm-BPM_MIN]);
-
-		  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, ccr_table[bpm-BPM_MIN]);		// bpm-mapped degrees
-		  HAL_Delay(delay_table[bpm-BPM_MIN]);
+		  (num_beats < 3) ? num_beats++ : (num_beats = 0);	// Check number of beats, increment if < 4 otherwise reset to 0
 
 	  }
 
-	  if (HAL_GetTick() - last_time > UPDATE_TIME)	//	Refresh loop, avoiding delays
+	  if (now - last_time > UPDATE_TIME)	//	Refresh loop using systick instead of delay
 	  {
-		  last_time = HAL_GetTick();
+		  last_time = now;
 
-		  updateLCD();
+		  updateLCD();								//	Update LCD with current BPM and tempo
 
 		  if (output_mode == LEDS)
 		  {
-			  updateLEDS();
+			  updateLEDS();							//	Update LEDs with current quarter beat if output is set to 'LEDS' from output_mode enum
 		  }
 
 
 	  }
 
-	  if (keyPressed)
+	  if (keyPressed)						//	Handling pressed matrix keys in main
 	  {
 	      keyPressed = false;
 	      bpm_changed = true;
-	      char k = scanMatrix();
+
+	      char k = scanMatrix();			//	Scan through keypad and return currently pressed key
 
 	      if (k != '\0')
 	      {
 	          bool done = handleKey(k);
 
-			#ifdef DEBUG
+			#ifdef DEBUG					//	Conditionally-compiled UART printing of keypad pressed keys for debugging purposes
 
 	          int n = done ? snprintf((char*)msg, sizeof(msg), "BPM set: %lu\r\n", bpm) : snprintf((char*)msg, sizeof(msg), "Entry: %lu\r\n", entry);
 	          HAL_UART_Transmit(&huart2, msg, n, 100);
@@ -729,7 +850,7 @@ static void MX_GPIO_Init(void)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	if (htim->Instance == TIM5)
+	if (htim->Instance == TIM5)	// When TIM5 interrupts set beat_pending flag variable for main
 	{
 		beat_pending = true;
 	}
@@ -739,39 +860,23 @@ void HAL_GPIO_EXTI_Callback(uint16_t gpio)
 {
 	uint32_t now = HAL_GetTick();
 
-	if (gpio == GPIO_PIN_13)
+	if (gpio == GPIO_PIN_13)	// Onboard user button connected to PC13
 	{
-//		if ((now - last_btn_tick) >= DEBOUNCE_MS)
-//		{
-//			last_btn_tick = now;
-//
-//			if (bpm + BPM_STEP <= BPM_MAX)	//	Increase BPM if < BPM_MAX
-//			{
-//				bpm += BPM_STEP;
-//				bpm_changed = true;
-//			}
-//			else if (bpm + BPM_STEP >= BPM_MAX)	//	Wrap if at BPM_MAX
-//			{
-//				bpm = BPM_MIN;
-//				bpm_changed = true;
-//			}
-//
-//		}
-		if ((now - last_btn_tick) >= DEBOUNCE_MS)
+		if ((now - last_btn_tick) >= DEBOUNCE_MS)	// Debounce switch using systick timer
 		{
 			last_btn_tick = now;
 			
-			(output_mode < 3) ? output_mode++ : (output_mode = 0);	// Toggle through output modes on button press, wrap at 3
+			(output_mode < 2) ? output_mode++ : (output_mode = 0);	// Toggle through output modes on button press, wrap at 3
 		}
 		
 	}
 
-	if (gpio == ROW1_Pin || gpio == ROW2_Pin || gpio == ROW3_Pin || gpio == ROW4_Pin)
+	if (gpio == ROW1_Pin || gpio == ROW2_Pin || gpio == ROW3_Pin || gpio == ROW4_Pin)	// Keypad matrix row pins connected to PA6, PA7, PA9 and PA8 respectively
 	{
-		if (now - last_keypad_tick >= DEBOUNCE_MS)
+		if (now - last_keypad_tick >= DEBOUNCE_MS)	// Debounce using systick timer
 		{
 			last_keypad_tick = now;
-			keyPressed = true;
+			keyPressed = true;	// Set keyPressed flag variable for main
 		}
 	}
 }
