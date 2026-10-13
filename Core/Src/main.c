@@ -136,7 +136,7 @@ OUTPUT_MODE;
 
 const char modes[3][6] = {"Buzz", "LEDs", "Servo"};
 
-OUTPUT_MODE output_mode = SERVO;	//	Default output buzzer
+OUTPUT_MODE output_mode = BUZZER;	//	Default output buzzer
 
 //	Lookup table for servo CCR value, mapped 190 beat values to 180 degrees of motion
 const uint32_t ccr_table[BPM_MAX-BPM_MIN+1] = {
@@ -253,7 +253,6 @@ static inline void disableBuzzer(void)
 {
 	HAL_TIM_PWM_Stop(&htim2, TIM_CHANNEL_1);
 	HAL_TIM_PWM_DeInit(&htim2);
-
 }
 
 /**
@@ -268,6 +267,27 @@ static inline void enableBuzzer(void)
 	MetronomeUpdatePeriod();
 }
 
+/**
+ * @brief   Converts the global @c bpm value to a 3-character, right-aligned
+ *          string.
+ * @details Extracts the hundreds, tens and ones digits of @c bpm and writes
+ *          them as ASCII into @p buff, followed by a null terminator. If the
+ *          hundreds digit is zero and the tens digit is non-zero, the
+ *          hundreds character is replaced with a space (e.g. 42 -> " 42").
+ *
+ * @note    @p buff must be at least 4 bytes (3 digits + '\0'). No bounds
+ *          checking is performed.
+ * @note    Only values 0-999 are represented correctly.
+ * @note    Values below 10 are not blanked and give "00X" (e.g. 5 -> "005").
+ *          In practice this is avoided if @c bpm is always >= BPM_MIN.
+ *
+ * @param[out] buff  Destination character buffer (min. size 4).
+ *
+ * @return  Pointer to @p buff, allowing the call to be used inline,
+ *          e.g. in a display or print function.
+ *
+ * @see     handleKey(), BPM_MIN, BPM_MAX
+ */
 static inline char* BPMtoCharArray(char* buff)
 {
 	buff[0] = '0' + ((bpm / 100) % 100);	//	Get 100s
@@ -467,11 +487,6 @@ int main(void)
 				  }
 				  servo_at_zero_pos = !servo_at_zero_pos;
 			  }
-//			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 25);
-//			  HAL_Delay(delay_table[bpm-BPM_MIN]);
-//			  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, ccr_table[bpm-BPM_MIN]);
-//			  HAL_Delay(delay_table[bpm-BPM_MIN]);
-
 		  }
 		  else if (output_mode == LEDS)		//	Update LEDs with current quarter beat if output is set to 'LEDS' from output_mode enum
 		  {
@@ -493,7 +508,7 @@ int main(void)
 	  {
 		  last_time = now;
 
-		  updateLCD();								//	Update LCD with current BPM and tempo
+		  updateLCD();						//	Update LCD with current BPM and tempo
 	  }
 
 	  if (keyPressed)						//	Handling pressed matrix keys in main
