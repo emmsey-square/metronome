@@ -74,7 +74,7 @@ char msg[50];
 #endif
 
 //	BPM variable for storing current bpm with intial value of BPM_MIN declared in main.h
-volatile uint32_t bpm = 200;//BPM_MIN;
+volatile uint32_t bpm = BPM_MIN;
 
 //	Flag variable for pending beat
 static volatile bool beat_pending = false;
