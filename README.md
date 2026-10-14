@@ -5,8 +5,8 @@ This repo contains the code I wrote and used for my CMPE3001 Embedded Systems En
 
 ## Utilised Hardware
 
-1. Utilised MCU - STM32L476RG (Nucleo board)
-2. External modules/peripherals - keypad matrix, I2C 16x2 LCD, passive piezoelectric buzzer, servo motor and various buttons & LEDs  
+* Utilised MCU - STM32L476RG (Nucleo board)
+* External modules/peripherals - keypad matrix, I2C 16x2 LCD, passive piezoelectric buzzer, servo motor and various buttons & LEDs  
 
 ## Design Requirements
 
@@ -40,6 +40,9 @@ With the design criteria in mind, my group settled on a digital metronome, with 
 * Systick timer - for debouncing switches, refreshing LCD and servo movement to avoid using blocking code
 * Functions - for repetitive code blocks & ISRs
 
+## Pinout
+
+![images/MX_pinout.png]
 ## Prototyping
 
 ![images/prototype.jpg]
