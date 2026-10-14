@@ -42,14 +42,14 @@ With the design criteria in mind, my group settled on a digital metronome, with 
 
 ## Pinout
 
-!(images/MX_pinout.png)
+![Pinout](images/MX_pinout.png)
 ## Prototyping
 
-!(images/prototype.jpg)
+![Prototype](images/prototype.jpg)
 
 ## Result
 
-![images/final.jpg]
+![Final](images/final.jpg)
 
 ### Disclaimer
 
